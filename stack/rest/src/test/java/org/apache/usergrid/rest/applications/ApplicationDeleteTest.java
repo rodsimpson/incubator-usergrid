@@ -21,81 +21,182 @@ package org.apache.usergrid.rest.applications;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.jersey.api.client.UniformInterfaceException;
 import org.apache.usergrid.rest.test.resource2point0.AbstractRestIT;
-import org.apache.usergrid.rest.test.resource2point0.model.ApiResponse;
-import org.apache.usergrid.rest.test.resource2point0.model.Collection;
-import org.apache.usergrid.rest.test.resource2point0.model.Entity;
-import org.apache.usergrid.rest.test.resource2point0.model.QueryParameters;
+import org.apache.usergrid.rest.test.resource2point0.endpoints.mgmt.ManagementResponse;
+import org.apache.usergrid.rest.test.resource2point0.model.*;
+import org.junit.Assert;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static org.junit.Assert.*;
+import javax.ws.rs.core.MediaType;
+import java.util.*;
 
 
 public class ApplicationDeleteTest  extends AbstractRestIT {
+    private static final Logger logger = LoggerFactory.getLogger(ApplicationDeleteTest.class);
 
 
     @Test
     public void testBasicOperation() throws Exception {
 
-        // create a collection with two entities
-        String name1 = "thing1";
-        String name2 = "thing2";
-        String property = "one fish, two fish, red fish, blue fish";
-        Entity payload = new Entity();
-        payload.put("name", name1);
-        payload.put("property", property);
-        Entity entity1 = this.app().collection("things").post(payload);
-        payload.put("name", name2);
-        Entity entity2 = this.app().collection("things").post(payload);
+        // create app with a collection of "things"
 
-        assertEquals(entity1.get("name"), name1);
-        assertEquals(entity2.get("name"), name2);
-        this.refreshIndex();
+        String orgName = clientSetup.getOrganization().getName();
+        String appToDelete = clientSetup.getAppName() + "_appToDelete";
+        Token orgAdminToken = getAdminToken( clientSetup.getUsername(), clientSetup.getUsername());
 
-        // test that we can query those entities
-        Collection collection = this.app().collection("things").get();
-        assertEquals(2, collection.getNumOfEntities());
+        ApiResponse appCreateResponse = clientSetup.getRestClient()
+            .management().orgs().organization( orgName ).app().getResource()
+            .queryParam( "access_token", orgAdminToken.getAccessToken() )
+            .type( MediaType.APPLICATION_JSON )
+            .post( ApiResponse.class, new Application( appToDelete ) );
+        UUID appToDeleteId = appCreateResponse.getEntities().get(0).getUuid();
 
-        //test that we can get the application entity
-        ApiResponse appResponse = this.app().get();
-        String retAppName = String.valueOf(appResponse.getProperties().get("applicationName")).toLowerCase();
-        assertEquals(clientSetup.getAppName().toLowerCase() , retAppName);
+        List<Entity> entities = new ArrayList<>();
+        for ( int i=0; i<10; i++ ) {
 
-        String uuid = String.valueOf(appResponse.getProperties().get("application"));
+            final String entityName = "entity" + i;
+            Entity entity = new Entity();
+            entity.setProperties(new HashMap<String, Object>() {{
+                put("name", entityName );
+            }});
 
-        // delete the application
-        QueryParameters parameters = new QueryParameters();
-        this.app().collection(uuid).delete(parameters);
+            ApiResponse createResponse = clientSetup.getRestClient()
+                .org(orgName).app( appToDelete ).collection("things").getResource()
+                .queryParam("access_token", orgAdminToken.getAccessToken())
+                .type(MediaType.APPLICATION_JSON)
+                .post( ApiResponse.class, entity );
 
-        //try to get the application entity
-        try {
-            this.app().get();
-            fail("should not be able to get app after it has been deleted");
-        } catch (UniformInterfaceException e) {
-            //verify the correct error was returned
-            JsonNode node = mapper.readTree( e.getResponse().getEntity( String.class ));
-            assertEquals( "organization_application_not_found", node.get( "error" ).textValue() );
+            entities.add( createResponse.getEntities().get(0) );
         }
+
+        // delete the app
+
+        clientSetup.getRestClient()
+            .org(orgName).app(appToDeleteId.toString() ).getResource()
+            .queryParam("access_token", orgAdminToken.getAccessToken() )
+            .delete();
+
+        // test that we can no longer get the app
+
+        try {
+            clientSetup.getRestClient()
+                .org(orgName).app(appToDelete).getResource()
+                .queryParam("access_token", orgAdminToken.getAccessToken())
+                .type(MediaType.APPLICATION_JSON)
+                .get(ApiResponse.class);
+
+            Assert.fail("Must not be able to get deleted app");
+
+        } catch ( UniformInterfaceException expected ) {
+            Assert.assertEquals("Error must be 400", 400, expected.getResponse().getStatus() );
+            JsonNode node = mapper.readTree( expected.getResponse().getEntity( String.class ));
+            Assert.assertEquals("organization_application_not_found", node.get("error").textValue());
+        }
+
+        // test that we can no longer get deleted app's collection
+
+        try {
+            clientSetup.getRestClient()
+                .org(orgName).app(appToDelete).collection("things").getResource()
+                .queryParam("access_token", orgAdminToken.getAccessToken() )
+                .type(MediaType.APPLICATION_JSON )
+                .get(ApiResponse.class);
+
+            Assert.fail("Must not be able to get deleted app's collection");
+
+        } catch ( UniformInterfaceException expected ) {
+            Assert.assertEquals("Error must be 400", 400, expected.getResponse().getStatus() );
+            JsonNode node = mapper.readTree( expected.getResponse().getEntity( String.class ));
+            Assert.assertEquals("organization_application_not_found", node.get("error").textValue());
+        }
+
+        // test that we can no longer get an app entity
+
+        try {
+            UUID entityId = entities.get(0).getUuid();
+            clientSetup.getRestClient()
+                .org(orgName).app(appToDelete).collection("things").entity( entityId ).getResource()
+                .queryParam( "access_token", orgAdminToken.getAccessToken())
+                .type( MediaType.APPLICATION_JSON)
+                .get(ApiResponse.class);
+
+            Assert.fail("Must not be able to get deleted app entity");
+
+        } catch ( UniformInterfaceException expected ) {
+            Assert.assertEquals("Error must be 400", 400, expected.getResponse().getStatus() );
+            JsonNode node = mapper.readTree( expected.getResponse().getEntity( String.class ));
+            Assert.assertEquals("organization_application_not_found", node.get("error").textValue());
+        }
+
+        // test that we cannot see the application in the list of applications
+
+        refreshIndex();
+
+        // TODO: uncomment this when USERGRID-448 (redundant appinfos) is fixed
+
+//        ManagementResponse mgmtResponse = clientSetup.getRestClient()
+//            .management().orgs().organization( orgName ).apps().getOrganizationApplications();
+//
+//        for ( String appName : mgmtResponse.getData().keySet() ) {
+//            if ( mgmtResponse.getData().get( appName ).equals( appToDeleteId.toString() )) {
+//                Assert.fail("Deleted app must not be included in list of org apps");
+//            }
+//        }
 
         // test that we cannot delete the application a second time
+
         try {
-            this.app().delete(clientSetup.getAppName());
-            fail("should not be able to delete app after it has been deleted");
-        } catch (UniformInterfaceException e) {
-            //verify the correct error was returned
-            JsonNode node = mapper.readTree( e.getResponse().getEntity( String.class ));
-            assertEquals( "organization_application_not_found", node.get( "error" ).textValue() );
+            clientSetup.getRestClient()
+                .org(orgName).app(appToDeleteId.toString()).getResource()
+                .queryParam("access_token", orgAdminToken.getAccessToken())
+                .delete();
+
+        } catch ( UniformInterfaceException expected ) {
+            Assert.assertEquals("Error must be 400", 400, expected.getResponse().getStatus() );
+            JsonNode node = mapper.readTree( expected.getResponse().getEntity( String.class ));
+            Assert.assertEquals("organization_application_not_found", node.get("error").textValue());
         }
 
-        // test that we can no longer query for the entities in the collection
-        try {
-            this.app().collection("things").get();
-            fail("should not be able to query for entities after app has been deleted");
-        } catch (UniformInterfaceException e) {
-            //verify the correct error was returned
-            JsonNode node = mapper.readTree( e.getResponse().getEntity( String.class ));
-            assertEquals( "organization_application_not_found", node.get( "error" ).textValue() );
-        }
+        // test that we can create a new application with the same name
+
+        ApiResponse appCreateAgainResponse = clientSetup.getRestClient()
+            .management().orgs().organization( orgName ).app().getResource()
+            .queryParam( "access_token", orgAdminToken.getAccessToken() )
+            .type( MediaType.APPLICATION_JSON )
+            .post( ApiResponse.class, new Application( appToDelete ) );
+
+        Assert.assertEquals("Must be able to create app with same name as deleted app",
+            "CREATED", appCreateAgainResponse.getStatus().toUpperCase());
+    }
+
+
+    @Test
+    public void testAppRestore() throws Exception {
+
+        // create and delete app
+
+        // restore the app
+
+        // test that app appears in list of apps
+
+        // test that application's collection exists
+    }
+
+
+
+    @Test
+    public void testAppRestoreConflict() throws Exception {
+
+        // create and delete app
+
+        // create new app with same name
+
+        // attempt to restore original app
+
+        // test that HTTP 409 CONFLICT and informative error message is received
+
+        // create a collection with two entities
+
     }
 }
+

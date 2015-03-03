@@ -20,8 +20,8 @@ import com.clearspring.analytics.hash.MurmurHash;
 import com.clearspring.analytics.stream.frequency.CountMinSketch;
 import com.codahale.metrics.Meter;
 import org.apache.usergrid.batch.JobExecution;
-import org.apache.usergrid.metrics.MetricsFactory;
 import org.apache.usergrid.persistence.*;
+import org.apache.usergrid.persistence.core.metrics.MetricsFactory;
 import org.apache.usergrid.persistence.entities.Device;
 import org.apache.usergrid.persistence.entities.Notification;
 import org.apache.usergrid.persistence.entities.Notifier;
@@ -396,15 +396,19 @@ public class ApplicationQueueManagerImpl implements ApplicationQueueManager {
 
 
     /**
-     * Call the adapter with the notifier
+     * Validates that a notifier and adapter exists to send notifications to;
+     * {"winphone":"mymessage","apple":"mymessage"}
+     * TODO: document this method better
      */
     private Map<String, Object> translatePayloads(Map<String, Object> payloads, Map<Object, ProviderAdapter> notifierMap) throws Exception {
         Map<String, Object> translatedPayloads = new HashMap<String, Object>(  payloads.size());
         for (Map.Entry<String, Object> entry : payloads.entrySet()) {
             String payloadKey = entry.getKey().toLowerCase();
             Object payloadValue = entry.getValue();
+            //look for adapter from payload map
             ProviderAdapter providerAdapter = notifierMap.get(payloadKey);
             if (providerAdapter != null) {
+                //translate payload to usable information
                 Object translatedPayload = payloadValue != null ? providerAdapter.translatePayload(payloadValue) : null;
                 if (translatedPayload != null) {
                     translatedPayloads.put(payloadKey, translatedPayload);

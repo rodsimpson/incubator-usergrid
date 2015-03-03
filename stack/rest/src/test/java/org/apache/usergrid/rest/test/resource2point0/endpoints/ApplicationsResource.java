@@ -17,6 +17,8 @@
 package org.apache.usergrid.rest.test.resource2point0.endpoints;
 
 
+import org.apache.usergrid.rest.test.resource.app.Collection;
+import org.apache.usergrid.rest.test.resource2point0.endpoints.mgmt.CredentialsResource;
 import org.apache.usergrid.rest.test.resource2point0.model.ApiResponse;
 import org.apache.usergrid.rest.test.resource2point0.model.Application;
 import org.apache.usergrid.rest.test.resource2point0.model.Entity;
@@ -32,30 +34,44 @@ import javax.ws.rs.core.MediaType;
  */
 public class ApplicationsResource extends NamedResource {
 
-    public ApplicationsResource(final String name, final ClientContext context, final UrlResource parent) {
+
+    public ApplicationsResource( final String name, final ClientContext context, final UrlResource parent ) {
         super( name, context, parent );
     }
+
 
     public CollectionEndpoint collection(String name) {
         return new CollectionEndpoint(name,context,this);
     }
 
-    public TokenResource token(){return new TokenResource(context,this);}
 
-    /**
-     * @method used to delete applications
-     * @param application (name or uuid)
-     */
-    public ApiResponse delete(String application) {
-        return getResource(true).type( MediaType.APPLICATION_JSON_TYPE ).accept( MediaType.APPLICATION_JSON )
-            .delete(ApiResponse.class, application);
+    public TokenResource token() {
+        return new TokenResource( context, this );
     }
 
+
     /**
-     * @method used to get an application entity
+     * Delete this application.
+     */
+    public ApiResponse delete() {
+        return getResource(true)
+            .type( MediaType.APPLICATION_JSON_TYPE )
+            .accept( MediaType.APPLICATION_JSON )
+            .delete( ApiResponse.class );
+    }
+
+    public CredentialsResource credentials(){
+        return new CredentialsResource(  context ,this );
+    }
+
+
+    /**
+     * Used to get an application entity.
      */
     public ApiResponse get() {
-        return getResource(true).type(MediaType.APPLICATION_JSON_TYPE).accept( MediaType.APPLICATION_JSON )
-            .delete(ApiResponse.class);
+        return getResource(true)
+            .type(MediaType.APPLICATION_JSON_TYPE)
+            .accept( MediaType.APPLICATION_JSON )
+            .get(ApiResponse.class);
     }
 }
