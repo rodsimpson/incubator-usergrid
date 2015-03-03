@@ -20,22 +20,40 @@
 
 package org.apache.usergrid.rest.test.resource2point0.endpoints.mgmt;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.usergrid.rest.test.resource2point0.endpoints.NamedResource;
 import org.apache.usergrid.rest.test.resource2point0.endpoints.UrlResource;
-import org.apache.usergrid.rest.test.resource2point0.model.ApiResponse;
-import org.apache.usergrid.rest.test.resource2point0.model.Application;
-import org.apache.usergrid.rest.test.resource2point0.model.Entity;
 import org.apache.usergrid.rest.test.resource2point0.state.ClientContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.ws.rs.core.MediaType;
+import java.io.IOException;
+import java.io.StringReader;
 
 
 /**
  * Management end-point for getting list of applications in organization.
  */
 public class ApplicationsResource extends NamedResource {
+    private static final Logger logger = LoggerFactory.getLogger(ApplicationsResource.class);
+    ObjectMapper mapper = new ObjectMapper();
 
     public ApplicationsResource( final ClientContext context, final UrlResource parent ) {
         super( "apps", context, parent );
     }
+
+    public ManagementResponse getOrganizationApplications() throws IOException {
+
+        String responseString = this.getResource()
+            .queryParam( "access_token", context.getToken().getAccessToken() )
+            .type(MediaType.APPLICATION_JSON)
+            .get(String.class);
+
+        logger.info("Response: " + responseString);
+
+        return mapper.readValue(
+            new StringReader(responseString), ManagementResponse.class);
+    }
 }
+
